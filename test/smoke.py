@@ -42,11 +42,24 @@ async def main() -> None:
         await call("search_bands", {"name": "Opeth", "limit": 3}, lambda d: d["results"][0]["ma_id"] == 38)
         await call("search_bands", {"country": "PT", "genre": "Heavy", "year_from": 1980, "year_to": 1985, "limit": 3},
                    lambda d: d["results"] and d["results"][0]["country"] == "PT" and "location" in d["results"][0])
+        page1 = await call("search_bands", {"genre": "thrash", "year_to": 1989, "limit": 5},
+                           lambda d: len(d["results"]) == 5 and d["total"] > 200 and d["next_offset"] == 5)
+        await call("search_bands", {"genre": "thrash", "year_to": 1989, "limit": 5, "offset": 5},
+                   lambda d: len(d["results"]) == 5 and d["next_offset"] == 10
+                   and not {r["ma_id"] for r in d["results"]} & {r["ma_id"] for r in page1["results"]})
         band = await call("get_band", {"band_id": 38},
                           lambda d: d["name"] == "Opeth" and len(d["lineup"]["current"]) >= 4 and "past" in d["lineup"])
         await call("get_band_bio", {"band_id": 38}, lambda d: len(d["bio"]) > 5000)
         await call("get_discography", {"band_id": 38, "release_types": ["Full-length"]},
                    lambda d: any(r["ma_id"] == 130 for r in d["releases"]) and all(r["type"] == "Full-length" for r in d["releases"]))
+        await call("get_discography", {"band_id": 38, "year_from": 1995, "year_to": 2001, "reviewed_only": True},
+                   lambda d: d["releases"] and all("1995" <= r["release_date"][:4] <= "2001" and r["reviews_count"]
+                                                   and "url" not in r for r in d["releases"]))
+        # Opeth (38) vs Morbid Saint (8939); also checks the disk-cached discography for 38.
+        await call("band_review_stats", {"band_ids": [38, 8939], "release_types": ["Full-length"], "min_reviews": 5},
+                   lambda d: len(d["bands"]) == 2 and all(b["reviews"] >= 5 and 0 < b["avg_percent"] <= 100
+                                                          and b["releases"] >= b["reviewed_releases"] for b in d["bands"])
+                   and d["bands"][0]["avg_percent"] >= d["bands"][1]["avg_percent"])
         album = await call("get_album", {"album_id": 130},
                            lambda d: d["title"] == "Blackwater Park" and len(d["tracks"]) == 8
                            and d["tracks"][0]["title"] == "The Leper Affinity" and d["lineup"]["band"])

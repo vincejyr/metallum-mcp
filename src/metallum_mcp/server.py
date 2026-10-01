@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import functools
 import itertools
+import re
 from typing import Any, Callable, Literal, Optional
 
 import anyio
@@ -43,6 +44,8 @@ GenreSlug = Literal[
     "progressive", "sludge", "speed", "stoner", "symphonic", "thrash", "viking",
 ]
 Limit = Annotated[int, Field(ge=1, le=200, description="Max results to return")]
+Offset = Annotated[int, Field(ge=0, description="Skip this many matches; pass the previous call's next_offset to page")]
+Year = Annotated[Optional[int], Field(ge=1900, le=2100)]
 BandId = Annotated[int, Field(gt=0, description="Metal Archives band id (from search_bands)")]
 ReleaseId = Annotated[int, Field(gt=0, description="Metal Archives release id (from search_albums or get_discography)")]
 ArtistId = Annotated[int, Field(gt=0, description="Metal Archives artist id (from a lineup)")]
@@ -61,6 +64,43 @@ def dump(obj: Any) -> Any:
 
 def take(iterator, limit: int) -> list:
     return dump(list(itertools.islice(iterator, limit)))
+
+
+def paged(iterator, limit: int, offset: int) -> dict:
+    """Results plus the total match count and where the next page starts (None when done)."""
+    client.last_total.value = None
+    results = take(iterator, limit)
+    total = client.last_total.value
+    next_offset = offset + len(results)
+    has_more = len(results) == limit and (total is None or next_offset < total)
+    return {"results": results, "total": total, "next_offset": next_offset if has_more else None}
+
+
+def release_year(release: dict) -> Optional[int]:
+    m = re.search(r"\d{4}", release.get("release_date") or "")
+    return int(m.group()) if m else None
+
+
+def filter_releases(
+    releases: list[dict],
+    release_types: Optional[list[str]] = None,
+    year_from: Optional[int] = None,
+    year_to: Optional[int] = None,
+    reviewed_only: bool = False,
+) -> list[dict]:
+    out = []
+    for r in releases:
+        year = release_year(r)
+        if release_types and r.get("type") not in release_types:
+            continue
+        if (year_from or year_to) and year is None:
+            continue
+        if year_from and year < year_from or year_to and year > year_to:
+            continue
+        if reviewed_only and not r.get("reviews_count"):
+            continue
+        out.append(r)
+    return out
 
 
 def tool(title: str):
@@ -97,25 +137,28 @@ def search_bands(
     location: Annotated[str, Field(description="City/region text, e.g. 'Gothenburg'")] = "",
     label: str = "",
     limit: Limit = 25,
+    offset: Offset = 0,
 ) -> dict:
     """Search bands by name and/or advanced filters (genre text, country, formation year range,
-    lyrical themes, location, label). At least one filter is required."""
+    lyrical themes, location, label). At least one filter is required. Returns `total` matches
+    and `next_offset` for paging through large result sets."""
     if not any([name, genre, country, year_from, year_to, themes, location, label]):
         raise ValueError("Give at least one of: name, genre, country, year range, themes, location, label.")
-    hits = take(
+    out = paged(
         ma.search_bands(
             band_name=name, genre=genre, country=country, year_from=year_from, year_to=year_to,
-            themes=themes, location=location, label=label, page_size=min(limit, 200),
+            themes=themes, location=location, label=label, index=offset, page_size=min(limit, 200),
         ),
         limit,
+        offset,
     )
     if country:
         # With a country filter MA returns the band's location in that column instead.
-        for h in hits:
+        for h in out["results"]:
             if "country" in h:
                 h["location"] = h.pop("country").strip()
             h["country"] = country.upper()
-    return {"results": hits}
+    return out
 
 
 @tool("Search releases")
@@ -129,20 +172,21 @@ def search_albums(
     label: str = "",
     country: Annotated[str, Field(description="ISO country code of the band")] = "",
     limit: Limit = 25,
+    offset: Offset = 0,
 ) -> dict:
-    """Search releases by title, band name, release year range, type, genre, label or country."""
+    """Search releases by title, band name, release year range, type, genre, label or country.
+    Returns `total` matches and `next_offset` for paging."""
     if not any([title, band, year_from, year_to, release_types, genre, label, country]):
         raise ValueError("Give at least one search criterion.")
-    return {
-        "results": take(
-            ma.search_albums(
-                release_title=title, band_name=band, year_from=year_from, year_to=year_to,
-                release_type=release_types, genre=genre, label=label, country=country,
-                page_size=min(limit, 200),
-            ),
-            limit,
-        )
-    }
+    return paged(
+        ma.search_albums(
+            release_title=title, band_name=band, year_from=year_from, year_to=year_to,
+            release_type=release_types, genre=genre, label=label, country=country,
+            index=offset, page_size=min(limit, 200),
+        ),
+        limit,
+        offset,
+    )
 
 
 @tool("Search songs")
@@ -196,15 +240,62 @@ def get_band_bio(band_id: BandId) -> dict:
 def get_discography(
     band_id: BandId,
     release_types: Optional[list[ReleaseTypeName]] = None,
+    year_from: Year = None,
+    year_to: Year = None,
+    reviewed_only: Annotated[bool, Field(description="Only releases that have at least one review")] = False,
 ) -> dict:
-    """A band's releases with id, type, release year and review stats. Optionally filter by type."""
-    releases = dump(ma.get_discography(band_id))
-    if release_types:
-        releases = [r for r in releases if r.get("type") in release_types]
+    """A band's releases with id, type, release year and review stats. Optionally filter by type,
+    release year range, or to reviewed releases only (useful for bands with huge discographies).
+    For review averages across many bands, use band_review_stats instead."""
+    releases = filter_releases(dump(ma.get_discography(band_id)), release_types, year_from, year_to, reviewed_only)
     for r in releases:
+        r.pop("url", None)  # derivable from ma_id; roughly half of each row
         if not r.get("band_ids"):
             r.pop("band_ids", None)
     return {"band_id": band_id, "releases": releases}
+
+
+MAX_STATS_BANDS = 25
+
+
+@tool("Band review stats")
+def band_review_stats(
+    band_ids: Annotated[list[BandId], Field(min_length=1, max_length=MAX_STATS_BANDS, description=f"Up to {MAX_STATS_BANDS} band ids (e.g. from search_bands)")],
+    release_types: Optional[list[ReleaseTypeName]] = None,
+    year_from: Year = None,
+    year_to: Year = None,
+    min_reviews: Annotated[int, Field(ge=0, description="Report bands with fewer reviews separately")] = 0,
+) -> dict:
+    """Review summary per band over the matching releases: release count, review count and
+    the review-weighted average score. One compact row per band instead of whole discographies,
+    sorted by average, highest first. Each uncached band costs one request (~3s); discographies
+    are cached on disk, so repeat scans are fast. Averages are computed from Metal Archives'
+    per-release averages, which are rounded, so treat ties within ~0.5 points as ties."""
+    stats, below, errors = [], [], []
+    for band_id in dict.fromkeys(band_ids):
+        try:
+            all_releases = dump(ma.get_discography(band_id))
+        except (LookupError, RuntimeError) as exc:
+            errors.append({"band_id": band_id, "error": str(exc)})
+            continue
+        releases = filter_releases(all_releases, release_types, year_from, year_to)
+        reviewed = [r for r in releases if r.get("reviews_count")]
+        n = sum(r["reviews_count"] for r in reviewed)
+        row = {
+            "band_id": band_id,
+            "releases": len(releases),
+            "reviewed_releases": len(reviewed),
+            "reviews": n,
+            "avg_percent": round(sum(r["reviews_count"] * r["reviews_avg_percent"] for r in reviewed) / n, 1) if n else None,
+        }
+        (stats if n >= min_reviews else below).append(row)
+    stats.sort(key=lambda s: (s["avg_percent"] is not None, s["avg_percent"] or 0), reverse=True)
+    out: dict = {"bands": stats}
+    if below:
+        out["below_min_reviews"] = below
+    if errors:
+        out["errors"] = errors
+    return out
 
 
 @tool("Get similar bands")
