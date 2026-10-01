@@ -3,3 +3,12 @@ node_modules/
 __pycache__/
 *.pyc
 .DS_Store
+
+# Eval: site data, transcripts and derived output stay local
+evals/fixtures.sqlite
+.claude/hillclimb/metallum-record/
+.claude/hillclimb/**/traces/
+.claude/hillclimb/**/report.html
+.claude/hillclimb/**/state.json
+.claude/hillclimb/**/trajectory/
+.claude/hillclimb/**/progress.txt

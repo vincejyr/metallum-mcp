@@ -1,0 +1,1 @@
+{"prompt_id":"not_found","rep":0,"failure_class":"fixture_miss","error":"fixture miss: Error executing tool search_bands: FIXTURE_MISS: no recorded response for https://www.metal-archives.com/search/ajax-advanced/searching/bands?bandLabelName=&bandName=Zzyzxqwk&bandNotes=&genre=&iDisplayLength=25&iDisplayStart=0&location=&themes=","retries":0,"judge_retries":0,"latency_s":8.258}

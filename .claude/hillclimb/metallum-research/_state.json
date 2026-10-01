@@ -1,0 +1,45 @@
+{
+  "metrics": [
+    {
+      "id": "correct",
+      "label": "Correct",
+      "kind": "binary"
+    }
+  ],
+  "perf_fields": [
+    {
+      "id": "tool_calls",
+      "label": "Tool calls"
+    },
+    {
+      "id": "used_review_stats",
+      "label": "Used stats tool"
+    },
+    {
+      "id": "full_discographies",
+      "label": "Discographies"
+    },
+    {
+      "id": "in_tokens",
+      "label": "In tokens"
+    },
+    {
+      "id": "out_tokens",
+      "label": "Out tokens"
+    },
+    {
+      "id": "claude_code_cost_usd",
+      "label": "Cost",
+      "unit": "$"
+    },
+    {
+      "id": "latency_s",
+      "label": "Latency",
+      "unit": "s"
+    }
+  ],
+  "harness_paths": [
+    "evals/cases.json"
+  ],
+  "harness_sha": "ba7d97c583bb1c610b7422e6c956f102611634fcbaf2cf7ab7219a0485e0c2f4"
+}
