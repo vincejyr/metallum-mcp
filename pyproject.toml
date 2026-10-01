@@ -1,0 +1,25 @@
+[project]
+name = "metallum-mcp"
+version = "1.0.0"
+description = "MCP server for Encyclopaedia Metallum (metal-archives.com), built on pymetal"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+dependencies = [
+    "mcp>=1.20",
+    # Pinned to the reviewed commit. Installed without the `antibot` extra on purpose.
+    "pymetal @ git+https://github.com/LeMetadatarr/pymetal@ce5d75a46996702f128bb155b95fd6076951f582",
+]
+
+[project.scripts]
+metallum-mcp = "metallum_mcp.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/metallum_mcp"]
