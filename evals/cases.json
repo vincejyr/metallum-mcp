@@ -1,0 +1,68 @@
+[
+  {"id": "watchtower_year", "tags": ["fact", "easy"],
+   "prompt": "What year did Watchtower release Control and Resistance?",
+   "grader": {"type": "number", "expected": 1989, "tolerance": 0}},
+
+  {"id": "nedgravd_drummer", "tags": ["multi_hop", "easy"],
+   "prompt": "Who plays drums on Nedgravd's album Ascension?",
+   "grader": {"type": "contains_all", "expected": ["Rostadmo"]}},
+
+  {"id": "nedgravd_label", "tags": ["fact", "easy"],
+   "prompt": "Which label is the Norwegian death metal band Nedgravd currently signed to?",
+   "grader": {"type": "contains_all", "expected": ["Headsplit"]}},
+
+  {"id": "sabbat_japan_genre", "tags": ["name_collision", "medium"],
+   "prompt": "What genre does the Japanese band Sabbat play, according to Metal Archives?",
+   "grader": {"type": "contains_all", "expected": ["black", "thrash"]}},
+
+  {"id": "morbid_saint_albums", "tags": ["multi_hop", "medium"],
+   "prompt": "How many full-length albums has Morbid Saint released, and which one has the most reviews on Metal Archives? Answer as '<count>; <album title>'.",
+   "grader": {"type": "number_and_text", "expected": 3, "text": ["Spectrum of Death"]}},
+
+  {"id": "lyric_search", "tags": ["search", "medium"],
+   "prompt": "Which metal song's lyrics open with the words 'We entered winter'? Give the song and the band.",
+   "grader": {"type": "contains_all", "expected": ["Leper Affinity", "Opeth"]}},
+
+  {"id": "review_score", "tags": ["reviews", "medium"],
+   "prompt": "What score did the reviewer hells_unicorn give Nedgravd's Ascension on Metal Archives? Answer with the percentage.",
+   "grader": {"type": "number", "expected": 91, "tolerance": 0}},
+
+  {"id": "similar_nedgravd", "tags": ["fact", "easy"],
+   "prompt": "Which band do Metal Archives users rate as most similar to Nedgravd?",
+   "grader": {"type": "contains_all", "expected": ["Infester"]}},
+
+  {"id": "coroner_pre1990_avg", "tags": ["rating", "medium"],
+   "prompt": "What is the review-weighted average score of Coroner's full-length albums released before 1990? Answer as a percentage with one decimal.",
+   "grader": {"type": "number", "expected": 91.2, "tolerance": 0.5}},
+
+  {"id": "bay_area_ranking", "tags": ["rating", "hard"],
+   "prompt": "Among Dark Angel, Vio-lence, Forbidden, Heathen and Death Angel, which band has the highest review-weighted average score across its full-length albums released before 1990?",
+   "grader": {"type": "contains_all", "expected": ["Vio-lence"]},
+   "expect_tool": "band_review_stats"},
+
+  {"id": "cult_shortlist", "tags": ["rating", "hard"],
+   "prompt": "Of these bands - Slauter Xstroyes, Ostrogoth, Morbid Saint, Holy Terror, Realm, Watchtower, Znöwhite, Sacred Blade, Liege Lord, Brocas Helm - which have at most 3 full-length albums, at least 5 reviews across those albums, and a review-weighted average above 90% across them? List the qualifying band names separated by commas.",
+   "grader": {"type": "set", "expected": ["Slauter Xstroyes", "Ostrogoth", "Morbid Saint", "Holy Terror", "Realm", "Watchtower", "Znöwhite"],
+              "universe": ["Slauter Xstroyes", "Ostrogoth", "Morbid Saint", "Holy Terror", "Realm", "Watchtower", "Znöwhite", "Sacred Blade", "Liege Lord", "Brocas Helm"]},
+   "expect_tool": "band_review_stats"},
+
+  {"id": "sortilege_albums", "tags": ["edge_case", "hard"],
+   "prompt": "How many distinct studio albums did the French band Sortilège release in the 1980s? Count an album released in two languages once.",
+   "grader": {"type": "number", "expected": 2, "tolerance": 0}},
+
+  {"id": "metallica_pre1990_reviews", "tags": ["big_discography", "hard"],
+   "prompt": "How many reviews in total do Metallica's releases dated before 1990 have on Metal Archives (all release types)?",
+   "grader": {"type": "number", "expected": 213, "tolerance": 0}},
+
+  {"id": "thrash_total", "tags": ["paging", "medium"],
+   "prompt": "How many bands does Metal Archives return for an advanced band search with genre 'thrash' and formation year up to 1989?",
+   "grader": {"type": "number", "expected": 4685, "tolerance": 0}},
+
+  {"id": "not_found", "tags": ["edge_case", "easy"],
+   "prompt": "What year was the metal band Zzyzxqwk Vorthrangul formed?",
+   "grader": {"type": "contains_all", "expected": ["NOT FOUND"]}},
+
+  {"id": "ambiguous_releases", "tags": ["ambiguity", "medium"],
+   "prompt": "Of Holy Terror, Znöwhite and Realm, which have fewer than 4 releases?",
+   "grader": {"type": "judge", "rubric": "The answer explicitly states how it interpreted 'releases' (for example full-length albums only versus every entry including demos and singles), and its conclusion is consistent with that interpretation. Under a full-lengths-only reading all three bands qualify (two albums each)."}}
+]

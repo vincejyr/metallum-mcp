@@ -26,6 +26,11 @@ DISK_CACHE_TTL_S = float(os.environ.get("MA_DISK_CACHE_TTL_DAYS", "7")) * 86400
 DISK_CACHE_DIR = Path(os.environ.get("MA_CACHE_DIR", Path.home() / ".cache" / "metallum-mcp"))
 # Pages that change rarely and are fetched in bulk; everything else stays memory-only.
 DISK_CACHE_PREFIXES = ("band/discography/",)
+# Fixtures for evals: "record" fetches live and saves every response; "replay" serves only
+# saved responses and never touches the network. Off unless both variables are set.
+FIXTURE_MODE = os.environ.get("MA_FIXTURE_MODE", "")
+FIXTURE_DB = os.environ.get("MA_FIXTURES", "")
+FIXTURE_MISS = "FIXTURE_MISS"
 USER_AGENT = os.environ.get(
     "MA_USER_AGENT", "Mozilla/5.0 (compatible; metallum-mcp/1.0; personal use)"
 )
@@ -42,7 +47,15 @@ class PoliteClient(Client):
         self.last_total = threading.local()
         self._disk: Optional[sqlite3.Connection] = None
         self._disk_lock = threading.Lock()
-        if DISK_CACHE_TTL_S > 0:
+        self._fixtures: Optional[sqlite3.Connection] = None
+        if FIXTURE_MODE or FIXTURE_DB:
+            if FIXTURE_MODE not in ("record", "replay") or not FIXTURE_DB:
+                raise RuntimeError("Set both MA_FIXTURES=<path> and MA_FIXTURE_MODE=record|replay.")
+            self._fixtures = sqlite3.connect(FIXTURE_DB, check_same_thread=False)
+            self._fixtures.execute(
+                "CREATE TABLE IF NOT EXISTS responses (key TEXT PRIMARY KEY, status INTEGER, content BLOB, text TEXT)"
+            )
+        elif DISK_CACHE_TTL_S > 0:
             try:
                 DISK_CACHE_DIR.mkdir(parents=True, exist_ok=True)
                 self._disk = sqlite3.connect(DISK_CACHE_DIR / "cache.sqlite", check_same_thread=False)
@@ -70,6 +83,31 @@ class PoliteClient(Client):
             )
             self._disk.commit()
 
+    @staticmethod
+    def _fixture_key(url: str, params: Optional[Mapping[str, Any]]) -> str:
+        items = sorted((k, str(v)) for k, v in (params or {}).items())
+        return url + ("?" + "&".join(f"{k}={v}" for k, v in items) if items else "")
+
+    def _fixture_get(self, url: str, params: Optional[Mapping[str, Any]]) -> Optional[Response]:
+        key = self._fixture_key(url, params)
+        with self._disk_lock:
+            row = self._fixtures.execute("SELECT status, content, text FROM responses WHERE key = ?", (key,)).fetchone()
+        if row is None:
+            if FIXTURE_MODE == "replay":
+                raise RuntimeError(f"{FIXTURE_MISS}: no recorded response for {key}")
+            return None
+        if row[0] == 404:
+            raise LookupError(f"Not found on Metal Archives: {url}")
+        return Response(row[1], row[2], url=url, from_cache=True)
+
+    def _fixture_put(self, url: str, params: Optional[Mapping[str, Any]], status: int, content: bytes, text: str) -> None:
+        with self._disk_lock:
+            self._fixtures.execute(
+                "INSERT OR REPLACE INTO responses VALUES (?, ?, ?, ?)",
+                (self._fixture_key(url, params), status, content, text),
+            )
+            self._fixtures.commit()
+
     def get_json(self, path: str, params: Optional[Mapping[str, Any]] = None) -> Any:
         data = super().get_json(path, params=params)
         if isinstance(data, dict) and "iTotalRecords" in data:
@@ -84,7 +122,11 @@ class PoliteClient(Client):
     ) -> Response:
         url = path if path.startswith("http") else self.base_url + path.lstrip("/")
         key = self._key("GET", url, params)
-        if use_cache:
+        if self._fixtures is not None:
+            recorded = self._fixture_get(url, params)
+            if recorded is not None:
+                return recorded
+        elif use_cache:
             cached = self._cache_get(key)
             if cached is not None:
                 return Response(*cached, url=url, from_cache=True)
@@ -106,9 +148,11 @@ class PoliteClient(Client):
                 f"Metal Archives refused the request (HTTP {r.status_code}). "
                 "It may be rate limiting; try again in a few minutes."
             )
+        content, text = r.content, r.text
+        if self._fixtures is not None and r.status_code in (200, 404):
+            self._fixture_put(url, params, r.status_code, content, text)
         if r.status_code == 404:
             raise LookupError(f"Not found on Metal Archives: {url}")
-        content, text = r.content, r.text
         final_url = getattr(r, "url", url) or url
         if use_cache and r.status_code == 200:
             self._cache_put(key, content, text)

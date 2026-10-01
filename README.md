@@ -122,6 +122,20 @@ These are worth reporting upstream.
 - Parsing depends on the site's HTML. If a tool starts returning empty fields, run the smoke test to see which one broke.
 - Uses MCP Python SDK 2.x (`MCPServer`, formerly `FastMCP`).
 
+## Evals
+
+`evals/` holds an end-to-end eval: 16 real research questions (facts, multi-step lookups, rating rankings, name collisions, edge cases, an ambiguous question), run through headless Claude Code with only this server attached. Graders check the model's final `ANSWER:` line. One ambiguity case is judged by Sonnet 5.5. Each case also records tool calls, whether `band_review_stats` was used, tokens, cost and latency. Cases and expected answers are in `evals/cases.md`.
+
+Site data is replayed from recorded fixtures (`MA_FIXTURES` + `MA_FIXTURE_MODE=record|replay` in the client), so scores don't drift as Metal Archives changes and runs don't crawl the site. The fixtures aren't committed. Record your own first (about 4 minutes, live site). This writes to a scratch flow, because the committed baseline's results would make the runner skip every case:
+
+```bash
+EVAL_FIXTURE_MODE=record node evals/run-eval.mjs --flow .claude/hillclimb/metallum-record --variant baseline --model claude-opus-5-5 --concurrency 1 --approve-harness
+```
+
+After that, runs replay offline (`EVAL_FIXTURE_MODE=replay`, the default), e.g. `--flow .claude/hillclimb/metallum-research --variant v1` to compare a change against the committed baseline. A page that wasn't recorded fails its case as `fixture_miss` rather than being fetched. Re-run in record mode to fill it in. `--approve-harness` records a fingerprint of the runner and cases; the runner refuses to run if they change until someone approves again.
+
+Baseline (2026-10-02, Opus 5.5): 16/16 correct, ~$0.76 per full run, median 2 tool calls and ~8 s per case.
+
 ## Layout
 
 ```
@@ -129,6 +143,7 @@ src/metallum_mcp/server.py   MCP server and tool definitions
 src/metallum_mcp/client.py   rate-limited, cached HTTP client for pymetal
 src/metallum_mcp/extras.py   bios, trivia, review text
 test/smoke.py                      end-to-end test through a real MCP client
+evals/                       eval runner, cases and grading (see Evals)
 ```
 
 ## Credits and disclaimer
